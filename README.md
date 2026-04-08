@@ -39,6 +39,43 @@ EC2 Instance
 - 已开通 Bedrock 模型访问：**Amazon Titan Embed Text V2** + **Anthropic Claude Sonnet**
 - 运行 OpenClaw 的 EC2 实例（t4g.medium 或以上）
 - Python 3.9+
+- EC2 IAM Role 需要以下权限：
+
+**部署时需要（临时）：**
+
+| 服务 | 权限 | 用途 |
+|------|------|------|
+| CloudFormation | `cloudformation:*` | 创建/管理 stack |
+| OpenSearch Serverless | `aoss:*` / `opensearchserverless:*` | 创建 collection + policy |
+| IAM | `iam:CreateRole` `iam:PutRolePolicy` 等 | CloudFormation 创建 IAM 资源 |
+| EC2 | `ec2:CreateSecurityGroup` `ec2:CreateVpcEndpoint` 等 | 创建 VPC Endpoint |
+| STS | `sts:GetCallerIdentity` | deploy.sh 检测当前 caller |
+
+**部署完成后（长期，最小权限）：**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "aoss:APIAccessAll",
+      "Resource": "arn:aws:aoss:*:*:collection/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "bedrock:InvokeModel",
+      "Resource": [
+        "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0",
+        "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
+        "arn:aws:bedrock:*:*:inference-profile/us.anthropic.*"
+      ]
+    }
+  ]
+}
+```
+
+> 💡 最简单的做法：部署时临时给 EC2 Role 加 `AdministratorAccess`，部署完成后收窄为上面的最小权限。
 
 ## 部署
 
