@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  OpenClaw Memory System v2 — OpenSearch Serverless + IAM
+  Creates collection, security policies, VPC Endpoint, and IAM role for EC2.
+
+Parameters:
+  CollectionName:
+    Type: String
+    Default: openclaw-memory
+    Description: Name for the OpenSearch Serverless collection
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where your EC2 instance runs
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnet IDs for the VPC Endpoint (use the subnet where your EC2 runs)
+
+  EC2SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security Group ID of your EC2 instance (only this SG can access AOSS)
+
+Resources:
+  # 1. Encryption Policy (required before collection)
+  EncryptionPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    Properties:
+      Name: !Sub "${CollectionName}-enc"
+      Type: encryption
+      Policy: !Sub |
+        {
+          "Rules": [{
+            "ResourceType": "collection",
+            "Resource": ["collection/${CollectionName}"]
+          }],
+          "AWSOwnedKey": true
+        }
+
+  # 2. Security Group for VPC Endpoint (allow 443 inbound from VPC)
+  VPCEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${CollectionName}-vpce-sg"
+      GroupDescription: Allow HTTPS access to AOSS VPC Endpoint from within VPC
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref EC2SecurityGroupId
+          Description: Allow HTTPS from EC2 security group only
+
+  # 3. VPC Endpoint for AOSS (private network access)
+  AOSSVPCEndpoint:
+    Type: AWS::OpenSearchServerless::VpcEndpoint
+    Properties:
+      Name: !Sub "${CollectionName}-vpce"
+      VpcId: !Ref VpcId
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+
+  # 4. Network Policy (VPC only, no public access)
+  NetworkPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    DependsOn: AOSSVPCEndpoint
+    Properties:
+      Name: !Sub "${CollectionName}-net"
+      Type: network
+      Policy: !Sub
+        - |
+          [{
+            "Rules": [
+              { "ResourceType": "collection", "Resource": ["collection/${CollectionName}"] },
+              { "ResourceType": "dashboard", "Resource": ["collection/${CollectionName}"] }
+            ],
+            "AllowFromPublic": false,
+            "SourceVPCEndpoints": ["${VPCEndpointId}"]
+          }]
+        - VPCEndpointId: !Ref AOSSVPCEndpoint
+
+  # 5. Collection (VECTORSEARCH type for kNN vector search)
+  MemoryCollection:
+    Type: AWS::OpenSearchServerless::Collection
+    DependsOn:
+      - EncryptionPolicy
+      - NetworkPolicy
+    Properties:
+      Name: !Ref CollectionName
+      Type: VECTORSEARCH
+      Description: OpenClaw AI memory storage and retrieval
+
+  # 6. IAM Role for EC2
+  MemoryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${CollectionName}-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: bedrock-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource:
+                  - "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0"
+                  - "arn:aws:bedrock:*::foundation-model/anthropic.claude-*"
+                  - "arn:aws:bedrock:*:*:inference-profile/us.anthropic.*"
+        - PolicyName: opensearch-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - aoss:APIAccessAll
+                Resource:
+                  - !GetAtt MemoryCollection.Arn
+
+  # 7. Instance Profile
+  MemoryInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "${CollectionName}-profile"
+      Roles:
+        - !Ref MemoryRole
+
+  # 8. Data Access Policy (grants the IAM Role access to index data)
+  DataAccessPolicy:
+    Type: AWS::OpenSearchServerless::AccessPolicy
+    Properties:
+      Name: !Sub "${CollectionName}-access"
+      Type: data
+      Policy: !Sub |
+        [{
+          "Rules": [
+            {
+              "ResourceType": "index",
+              "Resource": ["index/${CollectionName}/*"],
+              "Permission": [
+                "aoss:CreateIndex", "aoss:UpdateIndex", "aoss:DescribeIndex",
+                "aoss:ReadDocument", "aoss:WriteDocument"
+              ]
+            },
+            {
+              "ResourceType": "collection",
+              "Resource": ["collection/${CollectionName}"],
+              "Permission": ["aoss:CreateCollectionItems", "aoss:DescribeCollectionItems"]
+            }
+          ],
+          "Principal": ["${MemoryRole.Arn}"]
+        }]
+
+Outputs:
+  CollectionEndpoint:
+    Value: !GetAtt MemoryCollection.CollectionEndpoint
+    Description: OpenSearch Serverless endpoint URL
+    Export:
+      Name: !Sub "${AWS::StackName}-endpoint"
+
+  CollectionArn:
+    Value: !GetAtt MemoryCollection.Arn
+    Description: OpenSearch Serverless collection ARN
+
+  RoleArn:
+    Value: !GetAtt MemoryRole.Arn
+    Description: IAM Role ARN for EC2 instance
+
+  InstanceProfileArn:
+    Value: !GetAtt MemoryInstanceProfile.Arn
+    Description: Instance Profile ARN to attach to EC2
+
+  VPCEndpointId:
+    Value: !Ref AOSSVPCEndpoint
+    Description: AOSS VPC Endpoint ID

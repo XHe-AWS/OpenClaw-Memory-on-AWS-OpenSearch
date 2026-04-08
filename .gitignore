@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+*.log
+wal.jsonl
+index-state.json
+migrate_test.py
+test_deep_*.py
+test_batch_*.py
+*.tar.gz
+.pytest_cache/
