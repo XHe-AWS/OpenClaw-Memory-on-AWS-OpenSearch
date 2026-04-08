@@ -1,4 +1,4 @@
-# OpenClaw Memory System v2
+# OpenClaw Memory System
 
 > 基于 AWS OpenSearch Serverless + Bedrock 的 AI Agent 记忆系统，作为 OpenClaw MCP Server 运行。
 
