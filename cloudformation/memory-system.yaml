@@ -17,10 +17,6 @@ Parameters:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Subnet IDs for the VPC Endpoint (use the subnet where your EC2 runs)
 
-  EC2SecurityGroupId:
-    Type: AWS::EC2::SecurityGroup::Id
-    Description: Security Group ID of your EC2 instance (only this SG can access AOSS)
-
 Resources:
   # 1. Encryption Policy (required before collection)
   EncryptionPolicy:
@@ -48,8 +44,8 @@ Resources:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          SourceSecurityGroupId: !Ref EC2SecurityGroupId
-          Description: Allow HTTPS from EC2 security group only
+          CidrIp: "0.0.0.0/0"
+          Description: Allow HTTPS from anywhere in VPC
 
   # 3. VPC Endpoint for AOSS (private network access)
   AOSSVPCEndpoint:
@@ -76,7 +72,7 @@ Resources:
               { "ResourceType": "dashboard", "Resource": ["collection/${CollectionName}"] }
             ],
             "AllowFromPublic": false,
-            "SourceVPCEndpoints": ["${VPCEndpointId}"]
+            "SourceVPCEs": ["${VPCEndpointId}"]
           }]
         - VPCEndpointId: !Ref AOSSVPCEndpoint
 
