@@ -15,6 +15,8 @@ from botocore.exceptions import ClientError
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 
+import time
+
 from config import (
     OPENSEARCH_ENDPOINT,
     OPENSEARCH_REGION,
@@ -41,12 +43,14 @@ class OpenSearchClient:
         self.region = region
         self.index_name = index_name
         self._client: Optional[OpenSearch] = None
+        self._client_created_at: float = 0
 
     @property
     def client(self) -> OpenSearch:
-        """Lazy-init OpenSearch client with SigV4 auth."""
-        if self._client is None:
+        """Lazy-init OpenSearch client with SigV4 auth. Refreshes every 50min."""
+        if self._client is None or (time.time() - self._client_created_at) > 3000:
             self._client = self._create_client()
+            self._client_created_at = time.time()
         return self._client
 
     def _create_client(self) -> OpenSearch:
