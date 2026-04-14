@@ -197,7 +197,16 @@ python setup_opensearch.py
 
 ### OpenClaw MCP 配置
 
-在 `openclaw.json` 中添加：
+先获取 AOSS endpoint（一键部署时 deploy.sh 会自动输出，手动部署可用以下命令）：
+
+```bash
+aws opensearchserverless batch-get-collection \
+  --names openclaw-memory \
+  --query 'collectionDetails[0].collectionEndpoint' \
+  --output text --region us-west-2
+```
+
+然后在 `openclaw.json` 中添加（将 endpoint 和路径替换为实际值）：
 
 ```json
 {
@@ -207,7 +216,7 @@ python setup_opensearch.py
         "command": "/path/to/.venv/bin/python",
         "args": ["/path/to/mcp_server.py"],
         "env": {
-          "OPENCLAW_MEMORY_OPENSEARCH_ENDPOINT": "https://xxxxx.us-west-2.aoss.amazonaws.com",
+          "OPENCLAW_MEMORY_OPENSEARCH_ENDPOINT": "https://<your-collection-id>.us-west-2.aoss.amazonaws.com",
           "OPENCLAW_MEMORY_OPENSEARCH_REGION": "us-west-2"
         }
       }
@@ -236,27 +245,23 @@ openclaw gateway restart
 
 部署 MCP Server 后，还需要在 agent 的 workspace 文件中添加记忆系统的使用规则，否则 agent 有工具但不知道要用。
 
-在 `IDENTITY.md`、`AGENTS.md` 或其他 agent 会读取的系统文件中，添加以下规则：
+在 `IDENTITY.md`、`AGENTS.md` 或其他 agent 会读取的系统文件中，添加以下规则（可直接复制）：
 
-```markdown
-## MCP Memory 使用规则
+> **## MCP Memory 使用规则**
+>
+> 如果 `openclaw-memory` MCP server 可用（`aws_memory_write`、`aws_memory_search`），遵守以下规则：
+>
+> 1. **回复前**：如果用户询问过去的事件/偏好/决策，先调用 `aws_memory_search` 搜索相关记忆。
+> 2. **收到用户消息后**：调用 `aws_memory_write(role="user", content=<用户消息摘要>)` 记录。
+> 3. **生成回复后**：调用 `aws_memory_write(role="assistant", content=<回复摘要>)` 记录。
+> 4. **每个 turn 都必须执行**，不能因为"正在专注回答问题"而跳过写入。
+> 5. 不需要手动写入 MEMORY.md 等文件，除非用户明确要求——MCP Memory + Dreaming 会自动处理长期记忆。
 
-如果 `openclaw-memory` MCP server 可用（`aws_memory_write`、`aws_memory_search`），遵守以下规则：
+**关于参数：**
+- `agent_id` — Agent 可从自身 runtime context 自动获取（OpenClaw 的 IDENTITY.md 中定义了 agent 名称），无需手动传入
+- `session_id` — 取当前 session 标识即可
 
-1. **回复前**：如果用户询问过去的事件/偏好/决策，先调用 `aws_memory_search` 搜索相关记忆。
-2. **收到用户消息后**：调用 `aws_memory_write`，记录用户消息摘要。
-   ```
-   aws_memory_write(agent_id="<your-agent-id>", role="user", session_id=<session>, content=<摘要>)
-   ```
-3. **生成回复后**：调用 `aws_memory_write`，记录回复摘要。
-   ```
-   aws_memory_write(agent_id="<your-agent-id>", role="assistant", session_id=<session>, content=<摘要>)
-   ```
-4. **每个 turn 都必须执行**，不能因为"正在专注回答问题"而跳过写入。
-5. 不需要手动写入 MEMORY.md 等文件，除非用户明确要求——MCP Memory + Dreaming 会自动处理长期记忆。
-```
-
-> 💡 将 `<your-agent-id>` 替换为 agent 名称。这段规则确保 agent 的每次对话都被记录到 OpenSearch，为后续 Dreaming 和复盘提供原始数据。没有写入，就没有记忆。
+这段规则确保 agent 的每次对话都被记录到 OpenSearch，为后续 Dreaming 和复盘提供原始数据。**没有写入，就没有记忆。**
 
 ---
 
