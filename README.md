@@ -14,6 +14,7 @@
 - [配置](#配置)
   - [OpenClaw MCP 配置](#openclaw-mcp-配置)
   - [环境变量](#环境变量)
+  - [Agent Workspace 配置](#agent-workspace-配置)
 - [自动化维护](#自动化维护)
   - [Dreaming 记忆整理](#dreaming-记忆整理)
   - [复盘 Weekly Review](#复盘-weekly-review)
@@ -78,25 +79,12 @@ openclaw gateway restart
 - AWS 账号，已开通 Bedrock 模型访问：**Amazon Titan Embed Text V2** + **Anthropic Claude Sonnet**
 - 运行 OpenClaw 的 EC2 实例（t4g.medium 或以上），Python 3.9+
 
-**IAM 权限：**
+**IAM 权限（部署完成后，最小权限）：**
 
 <details>
-<summary>部署时需要（临时）</summary>
+<summary>点击展开 IAM Policy</summary>
 
-| 服务 | 权限 | 用途 |
-|------|------|------|
-| CloudFormation | `cloudformation:*` | 创建/管理 stack |
-| OpenSearch Serverless | `aoss:*` / `opensearchserverless:*` | 创建 collection + policy |
-| IAM | `iam:CreateRole` `iam:PutRolePolicy` 等 | CloudFormation 创建 IAM 资源 |
-| EC2 | `ec2:CreateSecurityGroup` `ec2:CreateVpcEndpoint` 等 | 创建 VPC Endpoint |
-| STS | `sts:GetCallerIdentity` | deploy.sh 检测当前 caller |
-
-> 💡 最简单的做法：部署时临时给 EC2 Role 加 `AdministratorAccess`，部署完成后收窄为最小权限。
-
-</details>
-
-<details>
-<summary>部署完成后（长期，最小权限）</summary>
+> 💡 部署时可临时给 EC2 Role 加 `AdministratorAccess`，部署完成后收窄为以下最小权限。
 
 ```json
 {
@@ -242,7 +230,33 @@ openclaw gateway restart
 | `OPENCLAW_MEMORY_OPENSEARCH_REGION` | `us-west-2` | AWS region |
 | `OPENCLAW_MEMORY_EMBED_MODEL` | `amazon.titan-embed-text-v2:0` | 嵌入模型 |
 | `OPENCLAW_MEMORY_EXTRACT_MODEL` | `us.anthropic.claude-sonnet-4-6` | Dreaming 用的 LLM |
-| `OPENCLAW_MEMORY_EXCEPTION_AGENTS` | `可搜索全部记忆的agent的ID` | 跨 agent 搜索白名单（逗号分隔） |
+| `OPENCLAW_MEMORY_EXCEPTION_AGENTS` | `xiaoxiami` | 跨 agent 搜索白名单（逗号分隔） |
+
+### Agent Workspace 配置
+
+部署 MCP Server 后，还需要在 agent 的 workspace 文件中添加记忆系统的使用规则，否则 agent 有工具但不知道要用。
+
+在 `IDENTITY.md`、`AGENTS.md` 或其他 agent 会读取的系统文件中，添加以下规则：
+
+```markdown
+## MCP Memory 使用规则
+
+如果 `openclaw-memory` MCP server 可用（`aws_memory_write`、`aws_memory_search`），遵守以下规则：
+
+1. **回复前**：如果用户询问过去的事件/偏好/决策，先调用 `aws_memory_search` 搜索相关记忆。
+2. **收到用户消息后**：调用 `aws_memory_write`，记录用户消息摘要。
+   ```
+   aws_memory_write(agent_id="<your-agent-id>", role="user", session_id=<session>, content=<摘要>)
+   ```
+3. **生成回复后**：调用 `aws_memory_write`，记录回复摘要。
+   ```
+   aws_memory_write(agent_id="<your-agent-id>", role="assistant", session_id=<session>, content=<摘要>)
+   ```
+4. **每个 turn 都必须执行**，不能因为"正在专注回答问题"而跳过写入。
+5. 不需要手动写入 MEMORY.md 等文件，除非用户明确要求——MCP Memory + Dreaming 会自动处理长期记忆。
+```
+
+> 💡 将 `<your-agent-id>` 替换为 agent 名称。这段规则确保 agent 的每次对话都被记录到 OpenSearch，为后续 Dreaming 和复盘提供原始数据。没有写入，就没有记忆。
 
 ---
 
