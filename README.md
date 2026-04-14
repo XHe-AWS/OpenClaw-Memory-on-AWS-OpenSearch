@@ -1,6 +1,30 @@
 # OpenClaw Memory System
 
-> 基于 AWS OpenSearch Serverless + Bedrock 的 AI Agent 记忆系统，作为 OpenClaw MCP Server 运行。
+> 基于 AWS OpenSearch Serverless + Bedrock 的 AI Agent 记忆系统，作为 [OpenClaw](https://github.com/openclaw/openclaw) MCP Server 运行。
+
+## 目录
+
+- [功能特性](#功能特性)
+- [架构](#架构)
+- [快速开始](#快速开始)
+- [部署](#部署)
+  - [前提条件](#前提条件)
+  - [方式一：一键部署（推荐）](#方式一一键部署推荐)
+  - [方式二：手动部署](#方式二手动部署)
+- [配置](#配置)
+  - [OpenClaw MCP 配置](#openclaw-mcp-配置)
+  - [环境变量](#环境变量)
+- [自动化维护](#自动化维护)
+  - [Dreaming 记忆整理](#dreaming-记忆整理)
+  - [复盘 Weekly Review](#复盘-weekly-review)
+  - [灾难恢复](#灾难恢复)
+- [MCP Tools 参考](#mcp-tools-参考)
+- [成本](#成本)
+- [目录结构](#目录结构)
+- [删除](#删除)
+- [License](#license)
+
+---
 
 ## 功能特性
 
@@ -33,15 +57,31 @@ EC2 Instance
     └── Bedrock Claude Sonnet (Dreaming)
 ```
 
-## 前提条件
+## 快速开始
 
-- 一个 AWS 账号
-- 已开通 Bedrock 模型访问：**Amazon Titan Embed Text V2** + **Anthropic Claude Sonnet**
-- 运行 OpenClaw 的 EC2 实例（t4g.medium 或以上）
-- Python 3.9+
-- EC2 IAM Role 需要以下权限：
+```bash
+# 克隆 → 部署 → 配置 → 测试（约 10 分钟）
+git clone https://github.com/XHe-AWS/OpenClaw-Memory-on-AWS-OpenSearch.git
+cd OpenClaw-Memory-on-AWS-OpenSearch
+chmod +x deploy.sh && ./deploy.sh us-west-2 openclaw-memory
+# 按输出提示将 MCP 配置添加到 openclaw.json，然后：
+openclaw gateway restart
+# 测试：对话中说 "记住我喜欢吃火锅"，再问 "我喜欢吃什么？"
+```
 
-**部署时需要（临时）：**
+---
+
+## 部署
+
+### 前提条件
+
+- AWS 账号，已开通 Bedrock 模型访问：**Amazon Titan Embed Text V2** + **Anthropic Claude Sonnet**
+- 运行 OpenClaw 的 EC2 实例（t4g.medium 或以上），Python 3.9+
+
+**IAM 权限：**
+
+<details>
+<summary>部署时需要（临时）</summary>
 
 | 服务 | 权限 | 用途 |
 |------|------|------|
@@ -51,7 +91,12 @@ EC2 Instance
 | EC2 | `ec2:CreateSecurityGroup` `ec2:CreateVpcEndpoint` 等 | 创建 VPC Endpoint |
 | STS | `sts:GetCallerIdentity` | deploy.sh 检测当前 caller |
 
-**部署完成后（长期，最小权限）：**
+> 💡 最简单的做法：部署时临时给 EC2 Role 加 `AdministratorAccess`，部署完成后收窄为最小权限。
+
+</details>
+
+<details>
+<summary>部署完成后（长期，最小权限）</summary>
 
 ```json
 {
@@ -75,30 +120,20 @@ EC2 Instance
 }
 ```
 
-> 💡 最简单的做法：部署时临时给 EC2 Role 加 `AdministratorAccess`，部署完成后收窄为上面的最小权限。
-
-## 部署
+</details>
 
 ### 方式一：一键部署（推荐）
 
 ```bash
-# 1. 克隆代码
 git clone https://github.com/XHe-AWS/OpenClaw-Memory-on-AWS-OpenSearch.git
 cd OpenClaw-Memory-on-AWS-OpenSearch
-
-# 2. 运行部署脚本（约 10 分钟）
 chmod +x deploy.sh
 ./deploy.sh us-west-2 openclaw-memory
-
-# 3. 按输出提示，将 MCP 配置添加到 openclaw.json
-
-# 4. 重启 gateway
-openclaw gateway restart
-
-# 5. 测试：对话中输入 "记住我喜欢吃火锅"，然后问 "我喜欢吃什么？"
 ```
 
-deploy.sh 自动完成：CloudFormation 部署 → 等待 AOSS ACTIVE → 创建索引 → 创建搜索 pipeline → 输出配置。
+deploy.sh 自动完成：CloudFormation 部署 → 等待 AOSS ACTIVE → 创建索引 → 创建搜索 pipeline → 输出 MCP 配置。
+
+按输出提示将配置添加到 `openclaw.json`（见下方 [OpenClaw MCP 配置](#openclaw-mcp-配置)），然后重启 gateway。
 
 ### 方式二：手动部署
 
@@ -164,7 +199,15 @@ export OPENCLAW_MEMORY_OPENSEARCH_REGION="us-west-2"
 python setup_opensearch.py
 ```
 
-#### 6. 配置 OpenClaw
+#### 6. 配置 OpenClaw 并重启
+
+见下方 [OpenClaw MCP 配置](#openclaw-mcp-配置)。
+
+---
+
+## 配置
+
+### OpenClaw MCP 配置
 
 在 `openclaw.json` 中添加：
 
@@ -189,20 +232,7 @@ python setup_opensearch.py
 openclaw gateway restart
 ```
 
-## 删除
-
-```bash
-# 一键删除所有 AWS 资源（AOSS + IAM + 数据）
-aws cloudformation delete-stack --stack-name openclaw-memory --region us-west-2
-
-# 清理本地文件
-rm -rf ~/.openclaw/memory/
-
-# 从 openclaw.json 移除 MCP 配置，重启 gateway
-openclaw gateway restart
-```
-
-## 配置
+### 环境变量
 
 通过环境变量覆盖默认配置（在 openclaw.json 的 `env` 中设置）：
 
@@ -214,7 +244,148 @@ openclaw gateway restart
 | `OPENCLAW_MEMORY_EXTRACT_MODEL` | `us.anthropic.claude-sonnet-4-6` | Dreaming 用的 LLM |
 | `OPENCLAW_MEMORY_EXCEPTION_AGENTS` | `xiaoxiami` | 跨 agent 搜索白名单（逗号分隔） |
 
-## MCP Tools
+---
+
+## 自动化维护
+
+部署完成后，建议配置两个自动化任务来持续维护记忆质量：
+
+| 任务 | 调度方式 | 频率 | 作用 |
+|------|----------|------|------|
+| **Dreaming** | 系统 crontab | 每天 | 三阶段自动提炼原始记忆（Light 提取 → REM 聚类 → Deep 评分+晋升） |
+| **复盘** | OpenClaw cron | 每周 | Agent 回顾近期记忆，提炼教训，更新人格/记忆文件 |
+
+### Dreaming 记忆整理
+
+Dreaming 是 Python 脚本，对 OpenSearch 中的原始记忆做三阶段处理。通过系统 crontab 调度。
+
+**添加 crontab：**
+
+```bash
+(crontab -l 2>/dev/null; echo "0 19 * * * cd /path/to/OpenClaw-Memory-on-AWS-OpenSearch && /path/to/OpenClaw-Memory-on-AWS-OpenSearch/.venv/bin/python -m dreaming.runner --agent <your-agent-id> >> /path/to/OpenClaw-Memory-on-AWS-OpenSearch/dreaming.log 2>&1") | crontab -
+```
+
+> 将 `/path/to/` 替换为实际安装路径，`<your-agent-id>` 替换为 agent 名称。`0 19 * * *` = 每天 UTC 19:00，按需调整。
+
+**验证 & 手动测试：**
+
+```bash
+crontab -l                                              # 确认已添加
+cd /path/to/OpenClaw-Memory-on-AWS-OpenSearch
+.venv/bin/python -m dreaming.runner --agent <your-agent-id>  # 手动跑一次
+tail -f dreaming.log                                    # 查看日志
+```
+
+### 复盘 Weekly Review
+
+复盘运行在 OpenClaw 内部的 cron 系统中。Agent 在隔离 session 中自动执行——用自然语言 prompt 驱动，无需额外代码。
+
+**OpenClaw cron vs 系统 crontab：**
+
+| | OpenClaw Cron | 系统 Crontab |
+|---|---|---|
+| **执行者** | OpenClaw Agent | 操作系统 shell |
+| **能力** | 调用所有 agent 工具（搜记忆、读写文件、发消息等） | 只能跑 shell 命令 |
+| **上下文** | 知道自己是谁，能读 SOUL.md / MEMORY.md | 无上下文 |
+| **输出** | 自动发消息通知用户 | 写日志 |
+
+**创建方法：** 在与 agent 的对话中说"创建复盘 cron job"即可。也可手动配置：
+
+```json
+{
+  "name": "weekly-review",
+  "description": "每周复盘，回顾近期记忆，提炼教训更新系统文件",
+  "schedule": {
+    "kind": "cron",
+    "expr": "0 20 * * 0",
+    "tz": "UTC"
+  },
+  "sessionTarget": "isolated",
+  "payload": {
+    "kind": "agentTurn",
+    "message": "<见下方 prompt>",
+    "timeoutSeconds": 300
+  },
+  "delivery": {
+    "mode": "announce"
+  }
+}
+```
+
+**参数说明：**
+- `0 20 * * 0` = 每周日 UTC 20:00（按需调整）
+- `sessionTarget: "isolated"` = 独立 session，不污染主对话
+- `delivery.mode: "announce"` = 执行完自动通知结果
+- `timeoutSeconds: 300` = 5 分钟超时
+
+<details>
+<summary><b>复盘 Prompt 参考（点击展开）</b></summary>
+
+```text
+你是 <agent-name>，正在执行每周复盘任务。
+
+## 步骤
+
+1. 用 aws_memory_search 搜索过去 7 天的记忆，分以下维度搜索：
+   - query: "错误 失败 error failed" (days_back: 7)
+   - query: "纠正 不对 actually wrong" (days_back: 7)
+   - query: "教训 发现 学到 best practice" (days_back: 7)
+   - query: "偏好 喜欢 不喜欢 preference" (days_back: 7)
+   - query: "工具 tool 配置 config" (days_back: 7)
+
+2. 读取当前系统文件：
+   - SOUL.md
+   - AGENTS.md
+   - TOOLS.md
+   - MEMORY.md
+
+3. 分析并归类：
+   - 反复出现的错误/被纠正的行为 → 提炼成规则
+   - 新发现的用户偏好/事实 → 记录
+   - 工具使用的新发现/坑 → 记录
+
+4. 写入规则（严格遵守）：
+   - 写之前先 read 最新文件内容
+   - 用 edit 精确替换，不要用 write 全量覆盖
+   - 检查是否已有类似条目：有则更新，无则追加
+   - 如发现新结论与已有规则矛盾 → 不自动修改，记录到 memory/review-needed.md 等用户裁决
+   - 行为规范 → SOUL.md
+   - 工作流程改进 → AGENTS.md
+   - 工具使用经验 → TOOLS.md
+   - 事实/偏好/人物信息 → MEMORY.md
+
+5. 输出本次复盘摘要，包括：
+   - 搜索到多少条相关记忆
+   - 做了哪些更新（文件名 + 改了什么）
+   - 有无矛盾需要用户裁决
+   - 如果没有值得更新的内容，说明原因
+```
+
+</details>
+
+> 💡 核心思路：agent 按步骤搜索记忆 → 读取现有文件 → 对比分析 → 精确更新。自然语言描述即可，agent 自己编排工具调用。
+
+### 灾难恢复
+
+如果需要在新实例上恢复：
+
+1. **MCP Server** — 重新 `git clone` + `pip install` + 配置 `openclaw.json`
+2. **Dreaming** — 重新添加 crontab
+3. **复盘** — 对 agent 说"创建复盘 cron job"，或将 JSON 写入 `~/.openclaw/cron/jobs.json`
+
+**备份清单：**
+
+| 资产 | 位置 | 重要性 |
+|------|------|--------|
+| Agent workspace | `~/.openclaw/workspace-*/` | ⭐⭐⭐ 不可替代 |
+| OpenClaw 配置 | `~/.openclaw/openclaw.json` | ⭐⭐ 可重建但费时 |
+| Cron 任务 | `~/.openclaw/cron/jobs.json` | ⭐ 可重建 |
+| OpenSearch 数据 | AWS 云上 | 不受本地影响 |
+| Session 历史 | `~/.openclaw/agents/*/sessions/` | 丢了无所谓 |
+
+---
+
+## MCP Tools 参考
 
 | Tool | 说明 |
 |------|------|
@@ -227,9 +398,13 @@ openclaw gateway restart
 | `aws_memory_index` | 手动触发文件索引 |
 | `aws_memory_stats` | 系统状态查询 |
 
+---
+
 ## 成本
 
 ~$25/月（AOSS 2 OCU 最低消费 $24 + Bedrock 调用 ~$1）
+
+---
 
 ## 目录结构
 
@@ -257,6 +432,23 @@ openclaw gateway restart
 ├── DEPLOY.md              # 完整部署手册（含迁移）
 └── requirements.txt       # Python 依赖
 ```
+
+---
+
+## 删除
+
+```bash
+# 删除 AWS 资源
+aws cloudformation delete-stack --stack-name openclaw-memory --region us-west-2
+
+# 清理本地
+rm -rf ~/.openclaw/memory/
+
+# 移除 MCP 配置并重启
+openclaw gateway restart
+```
+
+---
 
 ## License
 
