@@ -242,7 +242,7 @@ openclaw gateway restart
 | `OPENCLAW_MEMORY_OPENSEARCH_REGION` | `us-west-2` | AWS region |
 | `OPENCLAW_MEMORY_EMBED_MODEL` | `amazon.titan-embed-text-v2:0` | 嵌入模型 |
 | `OPENCLAW_MEMORY_EXTRACT_MODEL` | `us.anthropic.claude-sonnet-4-6` | Dreaming 用的 LLM |
-| `OPENCLAW_MEMORY_EXCEPTION_AGENTS` | `xiaoxiami` | 跨 agent 搜索白名单（逗号分隔） |
+| `OPENCLAW_MEMORY_EXCEPTION_AGENTS` | `可搜索全部记忆的agent的ID` | 跨 agent 搜索白名单（逗号分隔） |
 
 ---
 
